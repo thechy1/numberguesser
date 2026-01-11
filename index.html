@@ -136,7 +136,7 @@
         attempts = 0;
         answer = "";
         if (currentLength >= 4){
-            maxAttempts = currentLength * 2;
+            maxAttempts = Math.round(currentLength * 2.5);
         }else{
             maxAttempts = 9;
         }
@@ -238,6 +238,7 @@
 
 </body>
 </html>
+
 
 
 
