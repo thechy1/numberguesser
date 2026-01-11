@@ -3,84 +3,170 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>猜数字挑战赛</title>
+    <title>猜数字计时挑战赛</title>
     <style>
-        body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f4f4f9; padding: 20px; }
-        .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-        h1 { color: #333; font-size: 1.5rem; margin-bottom: 10px; }
-        .stats { margin-bottom: 1rem; color: #666; font-size: 0.9rem; line-height: 1.6; }
-        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 1.2rem; letter-spacing: 2px; text-align: center; }
-        button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
-        button:hover { background: #0056b3; }
-        .history { margin-top: 20px; width: 100%; max-height: 200px; overflow-y: auto; border-top: 1px solid #eee; padding-top: 10px; }
-        .log-item { font-size: 0.9rem; padding: 5px; border-bottom: 1px solid #f9f9f9; }
-        .fail-text { color: #dc3545; font-weight: bold; }
-        #max-info { color: #e67e22; font-weight: bold; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; padding: 20px; }
+        .main-layout { display: flex; gap: 20px; max-width: 900px; width: 100%; flex-wrap: wrap; justify-content: center; }
+        .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
+        .record-panel { background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 300px; min-height: 300px; }
+        h1 { color: #333; font-size: 1.5rem; margin-top: 0; }
+        .timer-display { font-size: 2.5rem; font-weight: bold; color: #95a5a6; margin: 10px 0; font-family: monospace; transition: color 0.3s; }
+        .timer-active { color: #007bff; } /* 计时开始后变色 */
+        .stats { margin-bottom: 1rem; color: #666; line-height: 1.6; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 2px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 1.5rem; letter-spacing: 4px; text-align: center; }
+        button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1rem; font-weight: bold; }
+        .record-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
+        .record-table th, .record-table td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
+        .success { color: #28a745; font-weight: bold; }
+        .waiting-msg { color: #e67e22; font-size: 0.8rem; font-style: italic; }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>猜数字挑战</h1>
-    <div class="stats">
-        当前数字长度: <span id="current-len">1</span><br>
-        剩余尝试机会: <span id="max-info">0</span>
+<div class="main-layout">
+    <div class="container">
+        <h1>数字破译</h1>
+        <div class="timer-display" id="timer">00:00.00</div>
+        <div id="wait-hint" class="waiting-msg">等待输入以开始计时...</div>
+        
+        <div class="stats">
+            难度系数: <strong><span id="current-len">1</span> 位数</strong><br>
+            剩余机会: <span id="max-info">3</span> 次
+        </div>
+        
+        <input type="text" id="guessInput" placeholder="在此输入..." autocomplete="off">
+        <button onclick="checkGuess()">提交破译指令</button>
+
+        <div id="message" style="margin-top: 15px; min-height: 24px; font-weight: 500;"></div>
+
+        <div class="history" id="historyLog" style="margin-top:20px; font-size: 0.85rem; color: #555;">
+            <strong>最近尝试：</strong>
+        </div>
     </div>
-    
-    <input type="text" id="guessInput" placeholder="输入数字..." autocomplete="off">
-    <button onclick="checkGuess()">提交猜想</button>
 
-    <div id="message" style="margin-top: 15px; min-height: 24px;"></div>
-
-    <div class="history" id="historyLog">
-        <strong>尝试记录：</strong>
+    <div class="record-panel">
+        <h3 style="margin-top:0">通关荣誉榜</h3>
+        <table class="record-table">
+            <thead>
+                <tr>
+                    <th>长度</th>
+                    <th>用时</th>
+                    <th>尝试</th>
+                </tr>
+            </thead>
+            <tbody id="record-body"></tbody>
+        </table>
     </div>
 </div>
 
 <script>
-    let currentLength = 1;
+let currentLength = 1;
     let answer = "";
     let attempts = 0;
-    let maxAttempts = 0; // 新增：最大尝试次数
+    let maxAttempts = 0;
+    
+    let startTime;
+    let timerInterval;
+    let isTimerRunning = false;
+
+    // --- 新增：本地保存逻辑 ---
+    const STORAGE_KEY = 'guess_number_records';
+
+    function saveRecord(len, time, tries) {
+        // 1. 获取现有记录
+        let records = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+        // 2. 添加新记录
+        records.push({ len, time, tries });
+        // 3. 存回本地
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+    }
+
+    function loadRecords() {
+        const tbody = document.getElementById('record-body');
+        tbody.innerHTML = ""; // 清空当前显示
+        let records = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+        
+        // 倒序显示，最新的在上面
+        records.reverse().forEach(item => {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${item.len}位</td><td class="success">${item.time}</td><td>${item.tries}</td>`;
+            tbody.appendChild(row);
+        });
+    }
+
+    function clearLocalRecords() {
+        if(confirm("确定要清空所有历史荣誉记录吗？")) {
+            localStorage.removeItem(STORAGE_KEY);
+            loadRecords();
+        }
+    }
+    // -----------------------
+
+    function formatTime(ms) {
+        let minutes = Math.floor(ms / 60000);
+        let seconds = Math.floor((ms % 60000) / 1000);
+        let centiseconds = Math.floor((ms % 1000) / 10);
+        return (minutes < 10 ? "0" : "") + minutes + ":" +
+               (seconds < 10 ? "0" : "") + seconds + "." +
+               (centiseconds < 10 ? "0" : "") + centiseconds;
+    }
 
     function initGame() {
+        clearInterval(timerInterval);
+        isTimerRunning = false;
         attempts = 0;
         answer = "";
-        maxAttempts = currentLength * 3; // 核心逻辑：长度 * 3
+        maxAttempts = currentLength * 3;
         
-        // 生成答案
         answer += Math.floor(Math.random() * 9 + 1).toString();
         for (let i = 1; i < currentLength; i++) {
             answer += Math.floor(Math.random() * 10).toString();
         }
 
-        // 更新界面
+        document.getElementById('timer').innerText = "00:00.00";
+        document.getElementById('timer').classList.remove('timer-active');
+        document.getElementById('wait-hint').style.visibility = "visible";
         document.getElementById('current-len').innerText = currentLength;
         document.getElementById('max-info').innerText = maxAttempts;
-        document.getElementById('historyLog').innerHTML = "<strong>尝试记录：</strong>";
-        document.getElementById('message').innerText = "游戏开始！请输入 " + currentLength + " 位数字";
+        document.getElementById('historyLog').innerHTML = "<strong>最近尝试：</strong>";
+        document.getElementById('message').innerText = "系统就绪";
         document.getElementById('message').style.color = "#333";
-        console.log("答案(调试用):", answer);
+        
+        // 每次初始化时加载一次本地记录
+        loadRecords();
+    }
+
+    function startTimerOnce() {
+        if (!isTimerRunning) {
+            isTimerRunning = true;
+            startTime = Date.now();
+            document.getElementById('timer').classList.add('timer-active');
+            document.getElementById('wait-hint').style.visibility = "hidden";
+            
+            timerInterval = setInterval(() => {
+                const elapsed = Date.now() - startTime;
+                document.getElementById('timer').innerText = formatTime(elapsed);
+            }, 30);
+        }
     }
 
     function checkGuess() {
-        const guess = document.getElementById('guessInput').value;
+        const inputField = document.getElementById('guessInput');
+        const guess = inputField.value;
         const msgZone = document.getElementById('message');
         
         if (guess.length !== currentLength || isNaN(guess)) {
-            msgZone.innerText = "请输入长度为 " + currentLength + " 的纯数字！";
-            msgZone.style.color = "red";
+            msgZone.innerText = "格式错误！";
+            msgZone.style.color = "#dc3545";
             return;
         }
 
         attempts++;
         let remaining = maxAttempts - attempts;
-        document.getElementById('max-info').innerText = remaining;
+        document.getElementById('max-info').innerText = Math.max(0, remaining);
 
         let correct = 0;
         let wrongPos = 0;
-
-        // 算法逻辑保持不变
         let ansCount = Array(10).fill(0);
         let guessCount = Array(10).fill(0);
         let matchedInPos = Array(10).fill(0);
@@ -102,35 +188,42 @@
             wrongPos += Math.min(guessCount[i], remainingAns);
         }
 
-        // 输出记录
-        const resultText = `猜 ${guess}: ✅${correct}位正确, ⚠️${wrongPos}位位置错误 (剩余${remaining}次)`;
         const logItem = document.createElement('div');
-        logItem.className = 'log-item';
-        logItem.innerText = resultText;
+        logItem.innerText = `[${guess}] -> ✅${correct} ⚠️${wrongPos}`;
         document.getElementById('historyLog').prepend(logItem);
 
-        // 判定胜负
         if (correct === currentLength) {
-            msgZone.innerText = "🎉 恭喜！长度 " + currentLength + " 已破译！";
-            msgZone.style.color = "green";
-            currentLength++; 
-            setTimeout(initGame, 2000); 
+            clearInterval(timerInterval);
+            const finalTime = document.getElementById('timer').innerText;
+            msgZone.innerText = "🎉 成功破译！";
+            msgZone.style.color = "#28a745";
+            
+            // --- 修改：保存并重新加载记录 ---
+            saveRecord(currentLength, finalTime, attempts);
+            loadRecords();
+            // ----------------------------
+            
+            currentLength++;
+            setTimeout(initGame, 1500);
         } else if (remaining <= 0) {
-            // 失败重置逻辑
-            msgZone.innerText = "❌ 失败！正确答案是 " + answer + "。正在重启...";
-            msgZone.style.color = "red";
-            currentLength = 1; // 失败后难度重置回 1
-            setTimeout(initGame, 3000);
-        } else {
-            msgZone.innerText = "继续努力！";
-            msgZone.style.color = "#333";
+            clearInterval(timerInterval);
+            msgZone.innerText = "☢️ 失败！答案是 " + answer;
+            msgZone.style.color = "#dc3545";
+            setTimeout(() => {
+                if(confirm("游戏结束！重头开始吗？")) {
+                    currentLength = 1;
+                    // 注意：这里我们不自动清空 localStorage，除非你想让玩家失败也丢记录
+                    initGame();
+                }
+            }, 500);
         }
         
-        document.getElementById('guessInput').value = "";
-        document.getElementById('guessInput').focus();
+        inputField.value = "";
+        inputField.focus();
     }
 
-    document.getElementById('guessInput').addEventListener('keypress', function (e) {
+    document.getElementById('guessInput').addEventListener('input', startTimerOnce);
+    document.getElementById('guessInput').addEventListener('keypress', (e) => {
         if (e.key === 'Enter') checkGuess();
     });
 
@@ -138,8 +231,4 @@
 </script>
 
 </body>
-</html>
-
-</body>
-
 </html>
