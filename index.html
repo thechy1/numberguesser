@@ -3,22 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>猜数字计时挑战赛</title>
+    <title>数字破译 - 最佳纪录挑战</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; align-items: center; background: #f0f2f5; padding: 20px; }
         .main-layout { display: flex; gap: 20px; max-width: 900px; width: 100%; flex-wrap: wrap; justify-content: center; }
         .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-        .record-panel { background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 300px; min-height: 300px; }
+        .record-panel { background: white; padding: 1.5rem; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 100%; max-width: 320px; min-height: 300px; }
         h1 { color: #333; font-size: 1.5rem; margin-top: 0; }
-        .timer-display { font-size: 2.5rem; font-weight: bold; color: #95a5a6; margin: 10px 0; font-family: monospace; transition: color 0.3s; }
-        .timer-active { color: #007bff; } /* 计时开始后变色 */
+        .timer-display { font-size: 2.5rem; font-weight: bold; color: #95a5a6; margin: 10px 0; font-family: monospace; }
+        .timer-active { color: #007bff; }
         .stats { margin-bottom: 1rem; color: #666; line-height: 1.6; }
         input { width: 100%; padding: 12px; margin: 10px 0; border: 2px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 1.5rem; letter-spacing: 4px; text-align: center; }
-        button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1rem; font-weight: bold; }
+        button { width: 100%; padding: 12px; background: #007bff; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1rem; font-weight: bold; width: 100%; }
         .record-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
-        .record-table th, .record-table td { border-bottom: 1px solid #eee; padding: 8px; text-align: left; }
+        .record-table th, .record-table td { border-bottom: 1px solid #eee; padding: 10px 5px; text-align: left; }
+        .best-label { font-size: 12px; background: #ffedcc; color: #d35400; padding: 2px 5px; border-radius: 4px; margin-left: 5px; }
         .success { color: #28a745; font-weight: bold; }
-        .waiting-msg { color: #e67e22; font-size: 0.8rem; font-style: italic; }
+        #message { margin-top: 15px; font-weight: 500; }
+        .clear-btn { color: #999; cursor: pointer; font-size: 12px; float: right; font-weight: normal; margin-top: 5px; }
+        .clear-btn:hover { color: #dc3545; }
     </style>
 </head>
 <body>
@@ -27,31 +30,33 @@
     <div class="container">
         <h1>数字破译</h1>
         <div class="timer-display" id="timer">00:00.00</div>
-        <div id="wait-hint" class="waiting-msg">等待输入以开始计时...</div>
+        <div id="wait-hint" style="color:#e67e22; font-size:0.8rem; margin-bottom:10px;">等待输入开始计时...</div>
         
         <div class="stats">
-            难度系数: <strong><span id="current-len">1</span> 位数</strong><br>
-            剩余机会: <span id="max-info">3</span> 次
+            目标难度: <strong><span id="current-len">1</span> 位数</strong><br>
+            生命点数: <span id="max-info">3</span> 次尝试
         </div>
         
         <input type="text" id="guessInput" placeholder="在此输入..." autocomplete="off">
-        <button onclick="checkGuess()">提交破译指令</button>
+        <button onclick="checkGuess()">提交指令</button>
+        <div id="message"></div>
 
-        <div id="message" style="margin-top: 15px; min-height: 24px; font-weight: 500;"></div>
-
-        <div class="history" id="historyLog" style="margin-top:20px; font-size: 0.85rem; color: #555;">
-            <strong>最近尝试：</strong>
+        <div id="historyLog" style="margin-top:20px; font-size: 0.85rem; color: #777; border-top: 1px solid #eee; padding-top:10px;">
+            <strong>历史尝试：</strong>
         </div>
     </div>
 
     <div class="record-panel">
-        <h3 style="margin-top:0">通关荣誉榜</h3>
+        <h3 style="margin:0">
+            各长度最佳纪录
+            <span class="clear-btn" onclick="clearBestRecords()">[清空记录]</span>
+        </h3>
         <table class="record-table">
             <thead>
                 <tr>
-                    <th>长度</th>
-                    <th>用时</th>
-                    <th>尝试</th>
+                    <th>位数</th>
+                    <th>最短耗时</th>
+                    <th>次数</th>
                 </tr>
             </thead>
             <tbody id="record-body"></tbody>
@@ -60,48 +65,18 @@
 </div>
 
 <script>
-let currentLength = 1;
+    let currentLength = 1;
     let answer = "";
     let attempts = 0;
     let maxAttempts = 0;
-    
     let startTime;
     let timerInterval;
     let isTimerRunning = false;
+    let currentMs = 0; // 记录当前毫秒数方便比较
 
-    // --- 新增：本地保存逻辑 ---
-    const STORAGE_KEY = 'guess_number_records';
+    const STORAGE_KEY = 'guess_number_best_scores';
 
-    function saveRecord(len, time, tries) {
-        // 1. 获取现有记录
-        let records = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-        // 2. 添加新记录
-        records.push({ len, time, tries });
-        // 3. 存回本地
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
-    }
-
-    function loadRecords() {
-        const tbody = document.getElementById('record-body');
-        tbody.innerHTML = ""; // 清空当前显示
-        let records = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
-        
-        // 倒序显示，最新的在上面
-        records.reverse().forEach(item => {
-            const row = document.createElement('tr');
-            row.innerHTML = `<td>${item.len}位</td><td class="success">${item.time}</td><td>${item.tries}</td>`;
-            tbody.appendChild(row);
-        });
-    }
-
-    function clearLocalRecords() {
-        if(confirm("确定要清空所有历史荣誉记录吗？")) {
-            localStorage.removeItem(STORAGE_KEY);
-            loadRecords();
-        }
-    }
-    // -----------------------
-
+    // 格式化时间
     function formatTime(ms) {
         let minutes = Math.floor(ms / 60000);
         let seconds = Math.floor((ms % 60000) / 1000);
@@ -109,6 +84,50 @@ let currentLength = 1;
         return (minutes < 10 ? "0" : "") + minutes + ":" +
                (seconds < 10 ? "0" : "") + seconds + "." +
                (centiseconds < 10 ? "0" : "") + centiseconds;
+    }
+
+    // 更新并保存最佳纪录
+    function updateBestRecord(len, ms, tries) {
+        let records = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+        
+        // 如果该长度没有记录，或者新记录用时更短，则保存
+        if (!records[len] || ms < records[len].ms) {
+            records[len] = {
+                timeStr: formatTime(ms),
+                ms: ms,
+                tries: tries
+            };
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(records));
+            return true; // 代表破了纪录
+        }
+        return false;
+    }
+
+    // 渲染榜单
+    function renderRecords() {
+        const tbody = document.getElementById('record-body');
+        tbody.innerHTML = "";
+        let records = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+        
+        // 获取所有位数并排序
+        let keys = Object.keys(records).sort((a, b) => parseInt(a) - parseInt(b));
+        
+        keys.forEach(len => {
+            const row = document.createElement('tr');
+            row.innerHTML = `
+                <td><strong>${len}位</strong></td>
+                <td class="success">${records[len].timeStr}</td>
+                <td>${records[len].tries}次</td>
+            `;
+            tbody.appendChild(row);
+        });
+    }
+
+    function clearBestRecords() {
+        if(confirm("确定清空所有最佳纪录吗？")) {
+            localStorage.removeItem(STORAGE_KEY);
+            renderRecords();
+        }
     }
 
     function initGame() {
@@ -124,16 +143,14 @@ let currentLength = 1;
         }
 
         document.getElementById('timer').innerText = "00:00.00";
-        document.getElementById('timer').classList.remove('timer-active');
+        document.getElementById('timer').className = "timer-display";
         document.getElementById('wait-hint').style.visibility = "visible";
         document.getElementById('current-len').innerText = currentLength;
         document.getElementById('max-info').innerText = maxAttempts;
-        document.getElementById('historyLog').innerHTML = "<strong>最近尝试：</strong>";
-        document.getElementById('message').innerText = "系统就绪";
+        document.getElementById('historyLog').innerHTML = "<strong>历史尝试：</strong>";
+        document.getElementById('message').innerText = "等待输入...";
         document.getElementById('message').style.color = "#333";
-        
-        // 每次初始化时加载一次本地记录
-        loadRecords();
+        renderRecords();
     }
 
     function startTimerOnce() {
@@ -144,8 +161,8 @@ let currentLength = 1;
             document.getElementById('wait-hint').style.visibility = "hidden";
             
             timerInterval = setInterval(() => {
-                const elapsed = Date.now() - startTime;
-                document.getElementById('timer').innerText = formatTime(elapsed);
+                currentMs = Date.now() - startTime;
+                document.getElementById('timer').innerText = formatTime(currentMs);
             }, 30);
         }
     }
@@ -156,7 +173,7 @@ let currentLength = 1;
         const msgZone = document.getElementById('message');
         
         if (guess.length !== currentLength || isNaN(guess)) {
-            msgZone.innerText = "格式错误！";
+            msgZone.innerText = "❌ 格式不符";
             msgZone.style.color = "#dc3545";
             return;
         }
@@ -167,57 +184,42 @@ let currentLength = 1;
 
         let correct = 0;
         let wrongPos = 0;
-        let ansCount = Array(10).fill(0);
-        let guessCount = Array(10).fill(0);
-        let matchedInPos = Array(10).fill(0);
+        let ansCount = Array(10).fill(0), guessCount = Array(10).fill(0), matched = Array(10).fill(0);
 
         for (let i = 0; i < currentLength; i++) {
-            let a = parseInt(answer[i]);
-            let g = parseInt(guess[i]);
+            let a = answer[i], g = guess[i];
             ansCount[a]++;
-            if (a === g) {
-                correct++;
-                matchedInPos[a]++;
-            } else {
-                guessCount[g]++;
-            }
+            if (a === g) { correct++; matched[a]++; }
+            else { guessCount[g]++; }
         }
-
         for (let i = 0; i < 10; i++) {
-            let remainingAns = ansCount[i] - matchedInPos[i];
-            wrongPos += Math.min(guessCount[i], remainingAns);
+            wrongPos += Math.min(guessCount[i], ansCount[i] - matched[i]);
         }
 
-        const logItem = document.createElement('div');
-        logItem.innerText = `[${guess}] -> ✅${correct} ⚠️${wrongPos}`;
-        document.getElementById('historyLog').prepend(logItem);
+        const log = document.createElement('div');
+        log.innerText = `[${guess}] -> ✅${correct} ⚠️${wrongPos}`;
+        document.getElementById('historyLog').prepend(log);
 
         if (correct === currentLength) {
             clearInterval(timerInterval);
-            const finalTime = document.getElementById('timer').innerText;
-            msgZone.innerText = "🎉 成功破译！";
-            msgZone.style.color = "#28a745";
+            let isNewBest = updateBestRecord(currentLength, currentMs, attempts);
             
-            // --- 修改：保存并重新加载记录 ---
-            saveRecord(currentLength, finalTime, attempts);
-            loadRecords();
-            // ----------------------------
+            msgZone.innerText = isNewBest ? "🔥 破纪录了！" : "🎉 破译成功！";
+            msgZone.style.color = "#28a745";
             
             currentLength++;
             setTimeout(initGame, 1500);
         } else if (remaining <= 0) {
             clearInterval(timerInterval);
-            msgZone.innerText = "☢️ 失败！答案是 " + answer;
+            msgZone.innerText = "☢️ 失败！答案: " + answer;
             msgZone.style.color = "#dc3545";
             setTimeout(() => {
-                if(confirm("游戏结束！重头开始吗？")) {
+                if(confirm("挑战中断，是否从1位重新开始？")) {
                     currentLength = 1;
-                    // 注意：这里我们不自动清空 localStorage，除非你想让玩家失败也丢记录
                     initGame();
                 }
             }, 500);
         }
-        
         inputField.value = "";
         inputField.focus();
     }
