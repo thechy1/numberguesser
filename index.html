@@ -7,21 +7,25 @@
     <style>
         body { font-family: sans-serif; display: flex; flex-direction: column; align-items: center; background: #f4f4f9; padding: 20px; }
         .container { background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); width: 100%; max-width: 400px; }
-        h1 { color: #333; font-size: 1.5rem; }
-        .stats { margin-bottom: 1rem; color: #666; }
+        h1 { color: #333; font-size: 1.5rem; margin-bottom: 10px; }
+        .stats { margin-bottom: 1rem; color: #666; font-size: 0.9rem; line-height: 1.6; }
         input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; font-size: 1.2rem; letter-spacing: 2px; text-align: center; }
         button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
         button:hover { background: #0056b3; }
         .history { margin-top: 20px; width: 100%; max-height: 200px; overflow-y: auto; border-top: 1px solid #eee; padding-top: 10px; }
         .log-item { font-size: 0.9rem; padding: 5px; border-bottom: 1px solid #f9f9f9; }
-        .success { color: #28a745; font-weight: bold; }
+        .fail-text { color: #dc3545; font-weight: bold; }
+        #max-info { color: #e67e22; font-weight: bold; }
     </style>
 </head>
 <body>
 
 <div class="container">
     <h1>猜数字挑战</h1>
-    <div class="stats" id="info">当前数字长度: <span id="current-len">1</span></div>
+    <div class="stats">
+        当前数字长度: <span id="current-len">1</span><br>
+        剩余尝试机会: <span id="max-info">0</span>
+    </div>
     
     <input type="text" id="guessInput" placeholder="输入数字..." autocomplete="off">
     <button onclick="checkGuess()">提交猜想</button>
@@ -37,20 +41,26 @@
     let currentLength = 1;
     let answer = "";
     let attempts = 0;
+    let maxAttempts = 0; // 新增：最大尝试次数
 
-    // 初始化游戏
     function initGame() {
         attempts = 0;
         answer = "";
-        // 生成第一个数字不为0的随机数（模拟原Python逻辑）
+        maxAttempts = currentLength * 3; // 核心逻辑：长度 * 3
+        
+        // 生成答案
         answer += Math.floor(Math.random() * 9 + 1).toString();
         for (let i = 1; i < currentLength; i++) {
             answer += Math.floor(Math.random() * 10).toString();
         }
+
+        // 更新界面
         document.getElementById('current-len').innerText = currentLength;
+        document.getElementById('max-info').innerText = maxAttempts;
         document.getElementById('historyLog').innerHTML = "<strong>尝试记录：</strong>";
         document.getElementById('message').innerText = "游戏开始！请输入 " + currentLength + " 位数字";
-        console.log("答案(调试用):", answer); // 实际上线可以删掉这行
+        document.getElementById('message').style.color = "#333";
+        console.log("答案(调试用):", answer);
     }
 
     function checkGuess() {
@@ -64,10 +74,13 @@
         }
 
         attempts++;
-        let correct = 0; // A: 位置和数字都对
-        let wrongPos = 0; // B: 数字对但位置不对
+        let remaining = maxAttempts - attempts;
+        document.getElementById('max-info').innerText = remaining;
 
-        // 统计频率的逻辑（对应原Python中的arrans和arrcorr）
+        let correct = 0;
+        let wrongPos = 0;
+
+        // 算法逻辑保持不变
         let ansCount = Array(10).fill(0);
         let guessCount = Array(10).fill(0);
         let matchedInPos = Array(10).fill(0);
@@ -85,23 +98,29 @@
         }
 
         for (let i = 0; i < 10; i++) {
-            // 剩余可匹配的数量
             let remainingAns = ansCount[i] - matchedInPos[i];
             wrongPos += Math.min(guessCount[i], remainingAns);
         }
 
-        // 输出结果
-        const resultText = `猜 ${guess}: ✅${correct}位正确, ⚠️${wrongPos}位位置错误 (第${attempts}次)`;
+        // 输出记录
+        const resultText = `猜 ${guess}: ✅${correct}位正确, ⚠️${wrongPos}位位置错误 (剩余${remaining}次)`;
         const logItem = document.createElement('div');
         logItem.className = 'log-item';
         logItem.innerText = resultText;
         document.getElementById('historyLog').prepend(logItem);
 
+        // 判定胜负
         if (correct === currentLength) {
             msgZone.innerText = "🎉 恭喜！长度 " + currentLength + " 已破译！";
             msgZone.style.color = "green";
-            currentLength++; // 自动增加难度
-            setTimeout(initGame, 2000); // 2秒后开始下一关
+            currentLength++; 
+            setTimeout(initGame, 2000); 
+        } else if (remaining <= 0) {
+            // 失败重置逻辑
+            msgZone.innerText = "❌ 失败！正确答案是 " + answer + "。正在重启...";
+            msgZone.style.color = "red";
+            currentLength = 1; // 失败后难度重置回 1
+            setTimeout(initGame, 3000);
         } else {
             msgZone.innerText = "继续努力！";
             msgZone.style.color = "#333";
@@ -111,7 +130,6 @@
         document.getElementById('guessInput').focus();
     }
 
-    // 回车提交
     document.getElementById('guessInput').addEventListener('keypress', function (e) {
         if (e.key === 'Enter') checkGuess();
     });
@@ -120,4 +138,8 @@
 </script>
 
 </body>
+</html>
+
+</body>
+
 </html>
